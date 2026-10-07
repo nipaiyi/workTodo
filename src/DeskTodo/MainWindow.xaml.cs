@@ -231,18 +231,19 @@ public partial class MainWindow : Window
     {
         var date = DateOnly.FromDateTime(DateTime.Now);
         if (Model.ActiveView == "Future") date = date.AddDays(1);
-        if (Try(() => Model.Add(QuickTitle.Text, "", date)))
-        { QuickTitle.Clear(); QuickTitle.Focus(); }
+        if (Try(() => Model.Add(QuickTitle.Text, "", date, (TodoPriority)QuickPriority.SelectedIndex)))
+        { QuickTitle.Clear(); QuickPriority.SelectedIndex = (int)TodoPriority.Normal; QuickTitle.Focus(); }
     }
 
     private void EditTask(TodoItem? item)
     {
         var initialDate = Model.ActiveView == "Future" ? DateOnly.FromDateTime(DateTime.Now).AddDays(1) : DateOnly.FromDateTime(DateTime.Now);
-        var editor = new TaskEditor(item, item == null ? QuickTitle.Text : "", initialDate, (title, notes, date) =>
+        var editor = new TaskEditor(item, item == null ? QuickTitle.Text : "", initialDate, (title, notes, date, priority) =>
         {
-            if (item == null) Model.Add(title, notes, date); else Model.Update(item, title, notes, date);
-        }) { Owner = this };
-        if (editor.ShowDialog() == true && item == null) QuickTitle.Clear();
+            if (item == null) Model.Add(title, notes, date, priority); else Model.Update(item, title, notes, date, priority);
+        }, (TodoPriority)QuickPriority.SelectedIndex) { Owner = this };
+        if (editor.ShowDialog() == true && item == null)
+        { QuickTitle.Clear(); QuickPriority.SelectedIndex = (int)TodoPriority.Normal; }
     }
 
     private void OpenSettings()

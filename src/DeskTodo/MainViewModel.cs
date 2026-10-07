@@ -52,14 +52,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var active = tasks.Where(t => !t.IsDeleted).ToArray();
         if (activeView == "Today")
         {
-            AddSection("今天", active.Where(t => !t.IsCompleted && t.PlannedDate == today));
-            AddSection("以前未完成", active.Where(t => !t.IsCompleted && t.PlannedDate < today).OrderBy(t => t.PlannedDate));
+            AddSection("今天", ByPriority(active.Where(t => !t.IsCompleted && t.PlannedDate == today)));
+            AddSection("以前未完成", ByPriority(active.Where(t => !t.IsCompleted && t.PlannedDate < today)));
             AddSection("今日已完成", active.Where(t => TodoQueries.CompletedOn(t, today, TimeZoneInfo.Local)).OrderByDescending(t => t.CompletedAt));
         }
         else if (activeView == "Future")
         {
             foreach (var group in active.Where(t => !t.IsCompleted && t.PlannedDate > today).OrderBy(t => t.PlannedDate).GroupBy(t => t.PlannedDate))
-                AddSection(group.Key.ToString("M月d日 dddd", CultureInfo.GetCultureInfo("zh-CN")), group);
+                AddSection(group.Key.ToString("M月d日 dddd", CultureInfo.GetCultureInfo("zh-CN")), ByPriority(group));
         }
         else if (activeView == "History")
             AddSection("已完成", active.Where(t => TodoQueries.CompletedOn(t, DateOnly.FromDateTime(historyDate), TimeZoneInfo.Local)).OrderByDescending(t => t.CompletedAt));
@@ -73,17 +73,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (list.Length > 0) Sections.Add(new($"{title} · {list.Length}", list));
     }
 
-    public void Add(string title, string notes, DateOnly date)
+    private static IOrderedEnumerable<TodoItem> ByPriority(IEnumerable<TodoItem> items)
+        => items.OrderBy(t => t.Priority).ThenBy(t => t.PlannedDate).ThenBy(t => t.CreatedAt).ThenBy(t => t.Id);
+
+    public void Add(string title, string notes, DateOnly date, TodoPriority priority = TodoPriority.Normal)
     {
-        var item = TodoItem.Create(title, notes, date, DateTimeOffset.UtcNow);
+        var item = TodoItem.Create(title, notes, date, DateTimeOffset.UtcNow, priority);
         store.Save(item);
         undo = () => store.Save(item with { DeletedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
         Status = "已添加";
         Refresh();
     }
 
-    public void Update(TodoItem item, string title, string notes, DateOnly date)
-        => Change(item, item with { Title = TodoItem.ValidateTitle(title), Notes = notes.Trim(), PlannedDate = date, UpdatedAt = DateTimeOffset.UtcNow }, "已保存修改");
+    public void Update(TodoItem item, string title, string notes, DateOnly date, TodoPriority priority)
+        => Change(item, item with { Title = TodoItem.ValidateTitle(title), Notes = notes.Trim(), PlannedDate = date,
+            Priority = TodoItem.ValidatePriority(priority), UpdatedAt = DateTimeOffset.UtcNow }, "已保存修改");
 
     public void Toggle(TodoItem item)
         => Change(item, item with { CompletedAt = item.IsCompleted ? null : DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }, item.IsCompleted ? "已撤销完成" : "已完成");

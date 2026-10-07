@@ -2,18 +2,31 @@ using System.Globalization;
 
 namespace DeskTodo.Core;
 
+public enum TodoPriority { Urgent = 0, Normal = 1, Relaxed = 2 }
+
 public sealed record TodoItem(
     Guid Id, string Title, string Notes, DateOnly PlannedDate,
     DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
-    DateTimeOffset? CompletedAt = null, DateTimeOffset? DeletedAt = null)
+    DateTimeOffset? CompletedAt = null, DateTimeOffset? DeletedAt = null,
+    TodoPriority Priority = TodoPriority.Normal)
 {
     public bool IsCompleted => CompletedAt.HasValue;
     public bool IsDeleted => DeletedAt.HasValue;
     public string DateLabel => PlannedDate.ToString("M月d日", CultureInfo.GetCultureInfo("zh-CN"));
-    public string AccessibleTitle => (IsCompleted ? "已完成：" : "未完成：") + Title;
+    public string PriorityLabel => Priority switch
+    {
+        TodoPriority.Urgent => "急急急", TodoPriority.Normal => "抓点紧", TodoPriority.Relaxed => "不慌",
+        _ => throw new InvalidDataException("任务等级无效。")
+    };
+    public string AccessibleTitle => (IsCompleted ? "已完成：" : "未完成：") + Title + "，" + PriorityLabel;
 
-    public static TodoItem Create(string title, string notes, DateOnly date, DateTimeOffset now)
-        => new(Guid.NewGuid(), ValidateTitle(title), notes.Trim(), date, now, now);
+    public static TodoItem Create(string title, string notes, DateOnly date, DateTimeOffset now,
+        TodoPriority priority = TodoPriority.Normal)
+        => new(Guid.NewGuid(), ValidateTitle(title), notes.Trim(), date, now, now,
+            Priority: ValidatePriority(priority));
+
+    public static TodoPriority ValidatePriority(TodoPriority priority)
+        => Enum.IsDefined(priority) ? priority : throw new ArgumentException("请选择有效的任务等级。");
 
     public static string ValidateTitle(string title)
     {

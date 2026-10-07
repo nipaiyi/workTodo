@@ -6,7 +6,7 @@ namespace DeskTodo.Core;
 
 public sealed class TodoStore
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
     public string DatabasePath { get; }
     public string DataDirectory => Path.GetDirectoryName(DatabasePath)!;
 
@@ -27,19 +27,26 @@ public sealed class TodoStore
             if (Convert.ToInt32(version.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
                 throw new InvalidDataException("此文件不是桌面待办数据库，原文件未被修改。");
         }
+        if (existing == SchemaVersion) return;
+        if (existing == 1)
+            Backup(Path.Combine(DataDirectory, "backups", $"before-priority-upgrade-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.sqlite"));
         using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = """
+        command.CommandText = existing == 1 ? """
+            ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 1 CHECK(priority IN (0,1,2));
+            PRAGMA user_version = 2;
+            """ : """
             CREATE TABLE IF NOT EXISTS tasks (
                 id TEXT PRIMARY KEY, title TEXT NOT NULL, notes TEXT NOT NULL,
                 planned_date TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-                completed_at TEXT, deleted_at TEXT
+                completed_at TEXT, deleted_at TEXT,
+                priority INTEGER NOT NULL DEFAULT 1 CHECK(priority IN (0,1,2))
             );
             CREATE INDEX IF NOT EXISTS tasks_planned_date ON tasks(planned_date);
             CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             INSERT OR IGNORE INTO settings(key, value) VALUES ('application', 'DeskTodo');
-            PRAGMA user_version = 1;
+            PRAGMA user_version = 2;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();
@@ -65,10 +72,10 @@ public sealed class TodoStore
     private static List<TodoItem> ReadItems(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT id, title, notes, planned_date, created_at, updated_at, completed_at, deleted_at
-            FROM tasks ORDER BY created_at, id;
-            """;
+        command.CommandText = "PRAGMA user_version;";
+        var legacy = Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) == 1;
+        command.CommandText = "SELECT id, title, notes, planned_date, created_at, updated_at, completed_at, deleted_at, "
+            + (legacy ? "1" : "priority") + " FROM tasks ORDER BY created_at, id;";
         using var reader = command.ExecuteReader();
         var items = new List<TodoItem>();
         while (reader.Read())
@@ -78,7 +85,8 @@ public sealed class TodoStore
                 DateOnly.ParseExact(reader.GetString(3), "yyyy-MM-dd", CultureInfo.InvariantCulture),
                 ParseTime(reader.GetString(4)), ParseTime(reader.GetString(5)),
                 reader.IsDBNull(6) ? null : ParseTime(reader.GetString(6)),
-                reader.IsDBNull(7) ? null : ParseTime(reader.GetString(7)));
+                reader.IsDBNull(7) ? null : ParseTime(reader.GetString(7)),
+                TodoItem.ValidatePriority((TodoPriority)reader.GetInt32(8)));
             items.Add(item);
         }
         return items;
@@ -90,6 +98,7 @@ public sealed class TodoStore
     public void Save(TodoItem item)
     {
         TodoItem.ValidateTitle(item.Title);
+        TodoItem.ValidatePriority(item.Priority);
         using var connection = Open();
         using var transaction = connection.BeginTransaction();
         Save(connection, transaction, item);
@@ -101,11 +110,11 @@ public sealed class TodoStore
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO tasks(id,title,notes,planned_date,created_at,updated_at,completed_at,deleted_at)
-            VALUES($id,$title,$notes,$date,$created,$updated,$completed,$deleted)
+            INSERT INTO tasks(id,title,notes,planned_date,created_at,updated_at,completed_at,deleted_at,priority)
+            VALUES($id,$title,$notes,$date,$created,$updated,$completed,$deleted,$priority)
             ON CONFLICT(id) DO UPDATE SET title=excluded.title, notes=excluded.notes,
               planned_date=excluded.planned_date, updated_at=excluded.updated_at,
-              completed_at=excluded.completed_at, deleted_at=excluded.deleted_at;
+              completed_at=excluded.completed_at, deleted_at=excluded.deleted_at, priority=excluded.priority;
             """;
         command.Parameters.AddWithValue("$id", item.Id.ToString());
         command.Parameters.AddWithValue("$title", item.Title.Trim());
@@ -115,6 +124,7 @@ public sealed class TodoStore
         command.Parameters.AddWithValue("$updated", item.UpdatedAt.ToUniversalTime().ToString("O"));
         command.Parameters.AddWithValue("$completed", (object?)item.CompletedAt?.ToUniversalTime().ToString("O") ?? DBNull.Value);
         command.Parameters.AddWithValue("$deleted", (object?)item.DeletedAt?.ToUniversalTime().ToString("O") ?? DBNull.Value);
+        command.Parameters.AddWithValue("$priority", (int)item.Priority);
         command.ExecuteNonQuery();
     }
 
@@ -196,7 +206,8 @@ public sealed class TodoStore
         if (!string.Equals(command.ExecuteScalar()?.ToString(), "ok", StringComparison.Ordinal))
             throw new InvalidDataException("数据库完整性检查失败，请保留原文件并尝试恢复备份。");
         command.CommandText = "PRAGMA user_version;";
-        if (Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) != SchemaVersion)
+        var version = Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+        if (version < 1 || version > SchemaVersion)
             throw new InvalidDataException("备份版本不受支持。");
         command.CommandText = "SELECT value FROM settings WHERE key='application';";
         if (command.ExecuteScalar()?.ToString() != "DeskTodo")

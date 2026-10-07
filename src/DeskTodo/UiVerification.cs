@@ -29,6 +29,8 @@ internal static class UiVerification
         window.QuickTitle.Text = "整理今天的工作安排";
         window.AddButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Check(window.QuickTitle.Text == "" && window.Model.Summary.Pending == 1, "quick add saves and clears input");
+        Check(window.Store.ReadAll().Single().Priority == TodoPriority.Normal && window.QuickPriority.SelectedIndex == 1,
+            "quick add defaults to normal priority");
         window.QuickTitle.Text = "   ";
         window.AddButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Check(window.Store.ReadAll().Count == 1 && window.QuickTitle.Text == "   ", "invalid add preserves input");
@@ -38,12 +40,14 @@ internal static class UiVerification
             locked.Open();
             using var transaction = locked.BeginTransaction();
             window.QuickTitle.Text = "保存失败后仍保留的输入";
+            window.QuickPriority.SelectedIndex = 0;
             window.AddButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(window.QuickTitle.Text == "保存失败后仍保留的输入" && window.SaveLabel.Text == "操作未完成", "failed write keeps input and reports failure");
+            Check(window.QuickPriority.SelectedIndex == 0, "failed write preserves selected priority");
         }
         Check(window.Store.ReadAll().Count == 1, "failed UI write does not add phantom task");
         window.QuickTitle.Clear();
-        window.Model.Add("检查昨天未完成的事项", "保留原计划日期", window.Model.Today.AddDays(-1));
+        window.Model.Add("检查昨天未完成的事项", "保留原计划日期", window.Model.Today.AddDays(-1), TodoPriority.Urgent);
         window.Model.Add("明天准备会议资料", "", window.Model.Today.AddDays(1));
         window.UpdateLayout();
         var checkbox = Descendants<CheckBox>(window.TaskSections).First(c => c.DataContext is TodoItem);
@@ -53,22 +57,39 @@ internal static class UiVerification
         window.UndoButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Check(window.Model.Summary.Pending == 2 && window.Model.Summary.Completed == 0, "undo button restores completion");
         var editItem = window.Store.ReadAll().First();
+        var newEditor = new TaskEditor(null, "", window.Model.Today, (_, _, _, _) => { });
+        Check(newEditor.PriorityInput.SelectedIndex == 1, "new detail editor defaults to normal priority");
+        newEditor.Close();
+        var urgentEditor = new TaskEditor(null, "", window.Model.Today, (_, _, _, _) => { }, TodoPriority.Urgent);
+        Check(urgentEditor.PriorityInput.SelectedIndex == 0, "new detail editor inherits selected quick priority");
+        urgentEditor.Close();
         var editor = new TaskEditor(editItem, "", window.Model.Today,
-            (title, notes, date) => window.Model.Update(editItem, title, notes, date)) { Owner = window };
+            (title, notes, date, priority) => window.Model.Update(editItem, title, notes, date, priority)) { Owner = window };
+        Check(editor.PriorityInput.SelectedIndex == (int)editItem.Priority, "editor loads existing priority");
         _ = editor.Dispatcher.BeginInvoke(() =>
         {
             editor.TitleInput.Text = "检查第一版桌面待办的折叠、跨天和数据恢复功能";
             editor.NotesInput.Text = "多行备注\n确认关闭后仍然保存";
+            editor.PriorityInput.SelectedIndex = 2;
             Capture(editor, Path.Combine(directory, "03-editor.png"));
             editor.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         });
         Check(editor.ShowDialog() == true, "task editor save closes dialog");
         Check(window.Store.ReadAll().First(t => t.Id == editItem.Id).Notes.Contains("多行"), "editor persists notes");
+        Check(window.Store.ReadAll().Single(t => t.Id == editItem.Id).Priority == TodoPriority.Relaxed, "editor persists changed priority");
+        window.Model.Undo();
+        var undone = window.Store.ReadAll().Single(t => t.Id == editItem.Id);
+        Check((undone with { UpdatedAt = editItem.UpdatedAt }) == editItem,
+            "undo edit restores previous content and priority");
+        window.Model.Update(window.Store.ReadAll().Single(t => t.Id == editItem.Id), "检查第一版桌面待办的折叠、跨天和数据恢复功能",
+            "多行备注\n确认关闭后仍然保存", editItem.PlannedDate, TodoPriority.Relaxed);
         window.FutureTab.IsChecked = true;
         Check(window.Model.ActiveView == "Future" && window.Model.Sections.Single().Items.Count == 1, "future tab excludes today");
         window.QuickTitle.Text = "明天检查备份";
         window.AddButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Check(window.Model.Sections.Single().Items.Count == 2 && window.Model.Summary.Pending == 2, "future quick add schedules tomorrow");
+        Check(window.Model.Sections.Single().Items.First().Priority == TodoPriority.Urgent && window.QuickPriority.SelectedIndex == 1,
+            "future quick add uses selected priority, sorts urgent first and resets default");
         Capture(window, Path.Combine(directory, "04-future.png"));
         window.TodayTab.IsChecked = true;
         window.Model.Toggle(window.Store.ReadAll().First(t => t.Id == editItem.Id));
@@ -87,8 +108,19 @@ internal static class UiVerification
         var restore = Descendants<Button>(window.TaskSections).First(b => b.Name == "Restore");
         restore.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Check(window.Model.IsEmpty && !window.Store.ReadAll().First(t => t.Id == editItem.Id).IsDeleted, "trash restore button works");
+        Check(window.Store.ReadAll().Single(t => t.Id == editItem.Id).Priority == TodoPriority.Relaxed,
+            "completion, deletion and restore preserve priority");
         window.TodayTab.IsChecked = true;
-        for (var i = 0; i < 12; i++) window.Model.Add($"验收事项 {i + 1}：较长的任务名称可以自动换行并保持按钮位置稳定", "", window.Model.Today);
+        for (var i = 0; i < 12; i++) window.Model.Add($"验收事项 {i + 1}：较长的任务名称可以自动换行并保持按钮位置稳定", "", window.Model.Today, (TodoPriority)(i % 3));
+        var ordered = window.Model.Sections.First().Items.Select(t => t.Priority).ToArray();
+        Check(ordered.SequenceEqual(ordered.Order()), "today pending tasks sort by urgency");
+        window.UpdateLayout();
+        Check(new[] { "急急急", "抓点紧", "不慌" }.All(label => Descendants<TextBlock>(window.TaskSections).Any(t => t.Name == "PriorityText" && t.Text == label)),
+            "rendered task rows show all three priority labels");
+        var samePriority = window.Model.Sections.First().Items.Where(t => t.Priority == TodoPriority.Normal).Select(t => t.Id).ToArray();
+        window.Model.Refresh();
+        Check(window.Model.Sections.First().Items.Where(t => t.Priority == TodoPriority.Normal).Select(t => t.Id).SequenceEqual(samePriority),
+            "same-priority ordering stays stable on refresh");
         Capture(window, Path.Combine(directory, "06-many-tasks.png"));
         Check(Descendants<ScrollViewer>(window).Any(s => s.ScrollableHeight > 0), "long list scrolls without growing window");
         window.CollapseButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -127,6 +159,25 @@ internal static class UiVerification
             Check(await Task.Run(() => rejected.WaitForExit(5000)) && rejected.ExitCode != 0, "verification refuses an existing database");
             Check(window.Store.ReadAll().Count == 16, "rejected verification preserves existing tasks");
         }
+        var priorityStore = new TodoStore(Path.Combine(directory, "priority-preview", "tasks.sqlite"));
+        priorityStore.Save(TodoItem.Create("安排本周工作", "", window.Model.Today, DateTimeOffset.UtcNow));
+        priorityStore.Save(TodoItem.Create("整理资料", "", window.Model.Today, DateTimeOffset.UtcNow, TodoPriority.Relaxed));
+        priorityStore.Save(TodoItem.Create("提交今日截止的材料", "", window.Model.Today, DateTimeOffset.UtcNow, TodoPriority.Urgent));
+        var preview = new MainWindow(priorityStore, false, true) { Owner = window };
+        preview.Show();
+        await Task.Delay(80);
+        Capture(preview, Path.Combine(directory, "09-priorities.png"));
+        var badges = Descendants<TextBlock>(preview.TaskSections).Where(t => t.Name == "PriorityText").ToArray();
+        Check(badges.Length == 3 && badges.All(t => t.TransformToAncestor(preview).Transform(new Point(0, 0)).Y
+            + t.ActualHeight < preview.ActualHeight - 80), "all priority labels fit in compact panel");
+        var urgentItem = priorityStore.ReadAll().Single(t => t.Priority == TodoPriority.Urgent);
+        var cancelled = new TaskEditor(urgentItem, "", window.Model.Today,
+            (title, notes, date, priority) => preview.Model.Update(urgentItem, title, notes, date, priority)) { Owner = preview };
+        Check(cancelled.PriorityInput.SelectedIndex == 0, "editing urgent task does not reset its priority");
+        _ = cancelled.Dispatcher.BeginInvoke(() => { cancelled.PriorityInput.SelectedIndex = 2; cancelled.DialogResult = false; });
+        Check(cancelled.ShowDialog() == false && priorityStore.ReadAll().Single(t => t.Id == urgentItem.Id) == urgentItem,
+            "cancelling priority edit leaves task untouched");
+        preview.Hide();
         File.WriteAllText(Path.Combine(directory, "ui-results.json"), JsonSerializer.Serialize(new { passed = checks.Count, checks }, new JsonSerializerOptions { WriteIndented = true }));
     }
 

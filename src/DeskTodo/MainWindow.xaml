@@ -1,5 +1,6 @@
 <Window x:Class="DeskTodo.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:core="clr-namespace:DeskTodo.Core;assembly=DeskTodo.Core"
         Title="桌面待办" Width="392" Height="632" WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False" ShowActivated="False"
         UseLayoutRounding="True" SnapsToDevicePixels="True" WindowStartupLocation="Manual"
@@ -32,7 +33,12 @@
             <TextBlock x:Name="TaskTitle" Text="{Binding Title}" FontSize="13" Foreground="{StaticResource Ink}"/>
             <TextBlock x:Name="Notes" Text="{Binding Notes}" Foreground="{StaticResource Muted}" FontSize="11"
                        TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" MaxHeight="18" Margin="0,3,0,0"/>
-            <TextBlock Text="{Binding DateLabel}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,3,0,0"/>
+            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+              <TextBlock Text="{Binding DateLabel}" Foreground="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <Border x:Name="PriorityBadge" Background="#FFF3D6" CornerRadius="3" Padding="5,2">
+                <TextBlock x:Name="PriorityText" Text="{Binding PriorityLabel}" Foreground="#805C16" FontSize="10"/>
+              </Border>
+            </StackPanel>
           </StackPanel>
           <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE712;" Click="TaskMenu_Click"
                   VerticalAlignment="Top" ToolTip="任务操作" AutomationProperties.Name="任务操作">
@@ -47,6 +53,8 @@
         </Grid>
       </Border>
       <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding Priority}" Value="{x:Static core:TodoPriority.Urgent}"><Setter TargetName="PriorityBadge" Property="Background" Value="#FDE8EA"/><Setter TargetName="PriorityText" Property="Foreground" Value="#AB3345"/></DataTrigger>
+        <DataTrigger Binding="{Binding Priority}" Value="{x:Static core:TodoPriority.Relaxed}"><Setter TargetName="PriorityBadge" Property="Background" Value="#E8F1FB"/><Setter TargetName="PriorityText" Property="Foreground" Value="#356791"/></DataTrigger>
         <DataTrigger Binding="{Binding IsCompleted}" Value="True"><Setter TargetName="TaskTitle" Property="TextDecorations" Value="Strikethrough"/><Setter TargetName="TaskTitle" Property="Foreground" Value="#8A737D"/></DataTrigger>
         <DataTrigger Binding="{Binding Notes}" Value=""><Setter TargetName="Notes" Property="Visibility" Value="Collapsed"/></DataTrigger>
         <DataTrigger Binding="{Binding IsDeleted}" Value="True"><Setter TargetName="Complete" Property="Visibility" Value="Collapsed"/><Setter TargetName="Restore" Property="Visibility" Value="Visible"/></DataTrigger>
@@ -80,6 +88,7 @@
         </Grid>
         <StackPanel Grid.Row="3">
           <Grid x:Name="AddArea" Margin="18,0,18,8">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
             <Grid>
               <TextBox x:Name="QuickTitle" MaxLength="240" KeyDown="QuickTitle_KeyDown" MinHeight="38" AutomationProperties.Name="新任务名称"/>
@@ -89,6 +98,12 @@
             </Grid>
             <Button x:Name="AddButton" Grid.Column="1" Style="{StaticResource IconButton}" Background="{StaticResource Accent}" Foreground="White" Content="&#xE710;" Height="36" Margin="4,0,0,0" Click="Add_Click" ToolTip="添加到今天" AutomationProperties.Name="添加到今天"/>
             <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE70F;" Height="36" Margin="4,0,0,0" Click="NewDetails_Click" ToolTip="添加任务并选择日期" AutomationProperties.Name="添加任务并选择日期"/>
+            <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,8,0,0">
+              <TextBlock Text="紧急程度" Foreground="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <ComboBox x:Name="QuickPriority" Width="96" Height="28" SelectedIndex="1" AutomationProperties.Name="新任务紧急程度">
+                <ComboBoxItem Content="急急急"/><ComboBoxItem Content="抓点紧"/><ComboBoxItem Content="不慌"/>
+              </ComboBox>
+            </StackPanel>
           </Grid>
           <DatePicker x:Name="HistoryPicker" Visibility="Collapsed" SelectedDate="{Binding HistoryDate, Mode=TwoWay}" Margin="18,0,18,8" AutomationProperties.Name="完成记录日期"/>
         </StackPanel>

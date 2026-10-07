@@ -7,6 +7,10 @@
     <TextBox x:Name="TitleInput" MaxLength="240" AutomationProperties.Name="任务名称"/>
     <TextBlock Text="计划日期" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,15,0,6"/>
     <DatePicker x:Name="DateInput" AutomationProperties.Name="计划日期"/>
+    <TextBlock Text="紧急程度" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,15,0,6"/>
+    <ComboBox x:Name="PriorityInput" Height="32" SelectedIndex="1" AutomationProperties.Name="任务紧急程度">
+      <ComboBoxItem Content="急急急"/><ComboBoxItem Content="抓点紧"/><ComboBoxItem Content="不慌"/>
+    </ComboBox>
     <TextBlock Text="备注" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,15,0,6"/>
     <TextBox x:Name="NotesInput" Height="100" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" MaxLength="4000" AutomationProperties.Name="任务备注"/>
     <TextBlock x:Name="ErrorLabel" Foreground="#B8464B" FontSize="12" Margin="0,8,0,0"/>

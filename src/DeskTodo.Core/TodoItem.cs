@@ -59,4 +59,5 @@ public static class TodoQueries
 
 public sealed record WindowPreferences(
     int? PixelX = null, int? PixelY = null, bool Collapsed = false,
-    bool AlwaysOnTop = true, bool HideInFullscreen = true);
+    bool AlwaysOnTop = true, bool HideInFullscreen = true,
+    int? CollapsedPixelX = null, int? CollapsedPixelY = null);

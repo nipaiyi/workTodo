@@ -44,8 +44,9 @@ public partial class MainWindow : Window
             handle = new WindowInteropHelper(this).Handle;
             var work = WindowsPlatform.WorkArea(handle);
             WindowsPlatform.GetWindowRect(handle, out var rect);
-            WindowsPlatform.Move(handle, preferences.PixelX ?? work.Right - rect.Width - 24,
-                preferences.PixelY ?? work.Top + 80);
+            WindowsPlatform.Move(handle,
+                (preferences.Collapsed ? preferences.CollapsedPixelX : null) ?? preferences.PixelX ?? work.Right - rect.Width - 24,
+                (preferences.Collapsed ? preferences.CollapsedPixelY : null) ?? preferences.PixelY ?? work.Top + 80);
             FitToScreen();
             positioned = true;
             SavePosition();
@@ -85,12 +86,16 @@ public partial class MainWindow : Window
     internal void SetCollapsed(bool value)
     {
         if (preferences.Collapsed == value) return;
-        WindowsPlatform.GetWindowRect(handle, out var old);
+        if (!WindowsPlatform.GetWindowRect(handle, out var old)) return;
+        if (!value) preferences = preferences with { CollapsedPixelX = old.Left, CollapsedPixelY = old.Top };
         preferences = preferences with { Collapsed = value };
         ApplySize();
         UpdateLayout();
         WindowsPlatform.GetWindowRect(handle, out var current);
-        WindowsPlatform.Move(handle, old.Right - current.Width, old.Top);
+        // The expanded panel may be clamped upward; keep that adjustment separate from the widget's home.
+        WindowsPlatform.Move(handle,
+            value ? preferences.CollapsedPixelX ?? old.Right - current.Width : old.Right - current.Width,
+            value ? preferences.CollapsedPixelY ?? old.Top : old.Top);
         FitToScreen();
         SavePosition();
     }
@@ -130,7 +135,11 @@ public partial class MainWindow : Window
         positionTimer.Stop();
         if (!positioned || handle == IntPtr.Zero) return;
         if (WindowsPlatform.GetWindowRect(handle, out var rect))
+        {
             preferences = preferences with { PixelX = rect.Left, PixelY = rect.Top };
+            if (preferences.Collapsed)
+                preferences = preferences with { CollapsedPixelX = rect.Left, CollapsedPixelY = rect.Top };
+        }
         Try(() => Store.SavePreferences(preferences));
     }
 
@@ -285,7 +294,22 @@ public partial class MainWindow : Window
     private void DragHeader(object sender, MouseButtonEventArgs e)
     {
         if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;
-        if (e.LeftButton == MouseButtonState.Pressed) { DragMove(); FitToScreen(); SavePosition(); }
+        if (e.LeftButton == MouseButtonState.Pressed)
+        {
+            WindowsPlatform.GetWindowRect(handle, out var before);
+            DragMove();
+            FitToScreen();
+            RememberPanelDrag(before);
+            SavePosition();
+        }
+    }
+
+    internal void RememberPanelDrag(WindowsPlatform.Rect before)
+    {
+        if (preferences.Collapsed || preferences.CollapsedPixelX is not { } x || preferences.CollapsedPixelY is not { } y
+            || !WindowsPlatform.GetWindowRect(handle, out var after)) return;
+        preferences = preferences with { CollapsedPixelX = x + after.Left - before.Left,
+            CollapsedPixelY = y + after.Top - before.Top };
     }
     private void Chip_MouseDown(object sender, MouseButtonEventArgs e)
     {

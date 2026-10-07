@@ -140,6 +140,86 @@ internal static class UiVerification
         WindowsPlatform.GetWindowRect(handle, out var rect);
         var work = WindowsPlatform.WorkArea(handle);
         Check(rect.Left >= work.Left && rect.Top >= work.Top && rect.Right <= work.Right + 2, "offscreen window recovered");
+        window.SetCollapsed(true);
+        window.UpdateLayout();
+        WindowsPlatform.GetWindowRect(handle, out var chipRect);
+        WindowsPlatform.Move(handle, work.Left + 24, work.Bottom - chipRect.Height - 12);
+        await Task.Delay(60);
+        WindowsPlatform.GetWindowRect(handle, out var leftHome);
+        window.ShowPanel();
+        await Task.Delay(60);
+        WindowsPlatform.GetWindowRect(handle, out var expanded);
+        Check(expanded.Top < leftHome.Top && expanded.Left >= work.Left && expanded.Top >= work.Top
+            && expanded.Right <= work.Right + 2 && expanded.Bottom <= work.Bottom + 2,
+            "bottom-left expansion stays inside work area");
+        window.SetCollapsed(true);
+        await Task.Delay(60);
+        WindowsPlatform.GetWindowRect(handle, out var restoredHome);
+        Check(restoredHome.Left == leftHome.Left && restoredHome.Top == leftHome.Top,
+            "collapse returns to exact bottom-left widget position");
+        for (var i = 0; i < 4; i++) { window.ShowPanel(); window.SetCollapsed(true); }
+        WindowsPlatform.GetWindowRect(handle, out restoredHome);
+        Check(restoredHome.Left == leftHome.Left && restoredHome.Top == leftHome.Top,
+            "repeated expand-collapse cycles do not drift");
+        WindowsPlatform.Move(handle, work.Right - restoredHome.Width - 24, work.Bottom - restoredHome.Height - 12);
+        WindowsPlatform.GetWindowRect(handle, out var rightHome);
+        window.ShowPanel();
+        window.TogglePin();
+        window.TogglePin();
+        window.ShowPanel();
+        var savedHome = window.Store.ReadPreferences();
+        Check(savedHome.CollapsedPixelX == rightHome.Left && savedHome.CollapsedPixelY == rightHome.Top,
+            "pin and repeated show preserve remembered widget position");
+        window.SetCollapsed(true);
+        WindowsPlatform.GetWindowRect(handle, out restoredHome);
+        Check(restoredHome.Left == rightHome.Left && restoredHome.Top == rightHome.Top,
+            "moving widget establishes a new bottom-right home");
+        Capture(window, Path.Combine(directory, "10-bottom-widget.png"));
+        window.ShowPanel();
+        WindowsPlatform.GetWindowRect(handle, out var beforeDrag);
+        WindowsPlatform.Move(handle, beforeDrag.Left - 24, beforeDrag.Top - 24);
+        WindowsPlatform.Clamp(handle);
+        WindowsPlatform.GetWindowRect(handle, out var afterDrag);
+        window.RememberPanelDrag(beforeDrag);
+        window.SetCollapsed(true);
+        WindowsPlatform.GetWindowRect(handle, out restoredHome);
+        Check(restoredHome.Left == rightHome.Left + afterDrag.Left - beforeDrag.Left
+            && restoredHome.Top == rightHome.Top + afterDrag.Top - beforeDrag.Top,
+            "deliberate panel drag moves widget home by the same distance");
+        window.ShowPanel();
+        var savedExpanded = window.Store.ReadPreferences();
+        var startupWindow = new MainWindow(window.Store, true, true) { Owner = window };
+        startupWindow.Show();
+        await Task.Delay(80);
+        var startupHandle = new System.Windows.Interop.WindowInteropHelper(startupWindow).Handle;
+        WindowsPlatform.GetWindowRect(startupHandle, out var startupRect);
+        Check(startupWindow.IsCollapsed && startupRect.Left == restoredHome.Left && startupRect.Top == restoredHome.Top,
+            "startup widget restores its saved home even when last exit was expanded");
+        startupWindow.Hide();
+        window.Store.SavePreferences(savedExpanded);
+        var restartedWindow = new MainWindow(window.Store, false, true) { Owner = window };
+        restartedWindow.Show();
+        await Task.Delay(80);
+        restartedWindow.SetCollapsed(true);
+        var restartedHandle = new System.Windows.Interop.WindowInteropHelper(restartedWindow).Handle;
+        WindowsPlatform.GetWindowRect(restartedHandle, out var restartedRect);
+        Check(restartedRect.Left == restoredHome.Left && restartedRect.Top == restoredHome.Top,
+            "normal restart retains collapsed home independently from panel position");
+        restartedWindow.Hide();
+        var offscreenStore = new TodoStore(Path.Combine(directory, "offscreen-home", "tasks.sqlite"));
+        offscreenStore.SavePreferences(new WindowPreferences(rect.Left, rect.Top,
+            CollapsedPixelX: -30000, CollapsedPixelY: -30000));
+        var offscreenWindow = new MainWindow(offscreenStore, false, true) { Owner = window };
+        offscreenWindow.Show();
+        await Task.Delay(80);
+        offscreenWindow.SetCollapsed(true);
+        var offscreenHandle = new System.Windows.Interop.WindowInteropHelper(offscreenWindow).Handle;
+        WindowsPlatform.GetWindowRect(offscreenHandle, out var clampedHome);
+        var currentWork = WindowsPlatform.WorkArea(offscreenHandle);
+        Check(clampedHome.Left >= currentWork.Left && clampedHome.Top >= currentWork.Top
+            && clampedHome.Right <= currentWork.Right && clampedHome.Bottom <= currentWork.Bottom,
+            "unavailable widget home is clamped onto an available monitor");
+        offscreenWindow.Hide();
         var settings = new SettingsWindow(window) { Owner = window };
         settings.Show();
         await Task.Delay(80);

@@ -96,6 +96,20 @@ try
     var settings = new WindowPreferences(-1900, 400, true, false, false);
     store.SavePreferences(settings);
     Check(new TodoStore(store.DatabasePath).ReadPreferences() == settings, "window preferences survive restart");
+    var anchoredSettings = settings with { CollapsedPixelX = -1800, CollapsedPixelY = 900 };
+    store.SavePreferences(anchoredSettings);
+    Check(new TodoStore(store.DatabasePath).ReadPreferences() == anchoredSettings, "widget position persists independently from expanded position");
+    using (var connection = new SqliteConnection($"Data Source={store.DatabasePath};Pooling=False"))
+    {
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE settings SET value=$value WHERE key='window';";
+        command.Parameters.AddWithValue("$value", System.Text.Json.JsonSerializer.Serialize(new
+            { settings.PixelX, settings.PixelY, settings.Collapsed, settings.AlwaysOnTop, settings.HideInFullscreen }));
+        command.ExecuteNonQuery();
+    }
+    Check(store.ReadPreferences() == settings, "legacy window settings remain compatible without widget coordinates");
+    store.SavePreferences(settings);
     var backup = Path.Combine(directory, "export.sqlite");
     store.Backup(backup);
     Check(new TodoStore(backup).ReadAll().Count == 3, "consistent SQLite backup readable");

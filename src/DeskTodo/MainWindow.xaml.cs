@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private bool exitRequested, manuallyHidden, fullscreenHidden, positioned;
     private IntPtr handle;
     private DateTimeOffset lastBackup;
+    private Point? dragOrigin;
     internal bool IsCollapsed => preferences.Collapsed;
 
     public MainWindow(TodoStore store, bool startup, bool verification)
@@ -54,6 +55,9 @@ public partial class MainWindow : Window
         Closing += Window_Closing;
         LocationChanged += (_, _) => { if (positioned) { positionTimer.Stop(); positionTimer.Start(); } };
         Activated += (_, _) => Try(Model.Refresh);
+        PreviewMouseMove += Surface_MouseMove;
+        PreviewMouseLeftButtonUp += (_, _) => CancelPendingDrag();
+        LostMouseCapture += (_, _) => dragOrigin = null;
         PreviewKeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape) { SetCollapsed(true); e.Handled = true; }
@@ -291,17 +295,53 @@ public partial class MainWindow : Window
         trayIcon?.Dispose();
     }
 
-    private void DragHeader(object sender, MouseButtonEventArgs e)
+    internal bool TryToggleFromDoubleClick(DependencyObject? source, MouseButton button, int clickCount)
     {
-        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) != null) return;
-        if (e.LeftButton == MouseButtonState.Pressed)
-        {
-            WindowsPlatform.GetWindowRect(handle, out var before);
-            DragMove();
-            FitToScreen();
-            RememberPanelDrag(before);
-            SavePosition();
-        }
+        if (button != MouseButton.Left || clickCount != 2 || !IsDragSurface(source)) return false;
+        CancelPendingDrag();
+        if (IsCollapsed) ShowPanel(); else SetCollapsed(true);
+        return true;
+    }
+
+    private bool IsDragSurface(DependencyObject? source)
+    {
+        if (FindAncestor<System.Windows.Controls.Primitives.ButtonBase>(source) != null) return false;
+        var surface = FindAncestor<Grid>(source);
+        return surface != null && (surface == Chip || surface == PanelHeader);
+    }
+
+    private void Surface_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (TryToggleFromDoubleClick(e.OriginalSource as DependencyObject, e.ChangedButton, e.ClickCount))
+        { e.Handled = true; return; }
+        if (e.ChangedButton != MouseButton.Left || e.LeftButton != MouseButtonState.Pressed
+            || !IsDragSurface(e.OriginalSource as DependencyObject)) return;
+        dragOrigin = e.GetPosition(this);
+        Mouse.Capture(this, CaptureMode.SubTree);
+        e.Handled = true;
+    }
+
+    private void CancelPendingDrag()
+    {
+        dragOrigin = null;
+        if (IsMouseCaptured) ReleaseMouseCapture();
+    }
+
+    private void Surface_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (dragOrigin is not { } origin) return;
+        if (e.LeftButton != MouseButtonState.Pressed) { CancelPendingDrag(); return; }
+        var delta = e.GetPosition(this) - origin;
+        if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        // Start the native move only after a real drag, so the first click cannot swallow a double-click.
+        CancelPendingDrag();
+        var hasPosition = WindowsPlatform.GetWindowRect(handle, out var before);
+        DragMove();
+        FitToScreen();
+        if (hasPosition) RememberPanelDrag(before);
+        SavePosition();
+        e.Handled = true;
     }
 
     internal void RememberPanelDrag(WindowsPlatform.Rect before)
@@ -311,16 +351,6 @@ public partial class MainWindow : Window
         preferences = preferences with { CollapsedPixelX = x + after.Left - before.Left,
             CollapsedPixelY = y + after.Top - before.Top };
     }
-    private void Chip_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        var origin = PointToScreen(e.GetPosition(this));
-        DragMove();
-        var end = PointToScreen(e.GetPosition(this));
-        FitToScreen();
-        SavePosition();
-        if ((end - origin).Length < 5) ShowPanel();
-    }
-
     internal static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
     {
         while (current != null)

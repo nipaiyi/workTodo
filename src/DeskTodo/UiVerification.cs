@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using DeskTodo.Core;
@@ -127,6 +128,36 @@ internal static class UiVerification
         await Task.Delay(60);
         Check(window.IsCollapsed && window.ActualWidth < 200 && window.Chip.IsVisible, "collapse button creates compact widget");
         Capture(window, Path.Combine(directory, "07-collapsed.png"));
+        var gestureHandle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        WindowsPlatform.GetWindowRect(gestureHandle, out var gestureHome);
+        var chipLabel = window.Chip.Children.OfType<TextBlock>().First();
+        Check(!window.TryToggleFromDoubleClick(chipLabel, MouseButton.Left, 1) && window.IsCollapsed,
+            "single left click does not expand widget");
+        Check(!window.TryToggleFromDoubleClick(chipLabel, MouseButton.Right, 2) && window.IsCollapsed,
+            "right double click does not toggle widget");
+        Check(window.TryToggleFromDoubleClick(chipLabel, MouseButton.Left, 2) && !window.IsCollapsed && window.Panel.IsVisible,
+            "left double click on widget content expands panel");
+        Check(!window.TryToggleFromDoubleClick(window.QuickTitle, MouseButton.Left, 2) && !window.IsCollapsed,
+            "double click in task input does not collapse panel");
+        Check(!window.TryToggleFromDoubleClick(window.PinButton, MouseButton.Left, 2) && !window.IsCollapsed,
+            "double click on header button does not collapse panel");
+        var taskText = Descendants<TextBlock>(window.TaskSections).First(t => t.Name == "TaskTitle");
+        Check(!window.TryToggleFromDoubleClick(taskText, MouseButton.Left, 2) && !window.IsCollapsed,
+            "double click on task text does not collapse panel");
+        var headerText = Descendants<TextBlock>(window.PanelHeader).First();
+        Check(window.TryToggleFromDoubleClick(headerText, MouseButton.Left, 2) && window.IsCollapsed,
+            "left double click on panel title collapses widget");
+        WindowsPlatform.GetWindowRect(gestureHandle, out var gestureReturned);
+        Check(gestureReturned.Left == gestureHome.Left && gestureReturned.Top == gestureHome.Top,
+            "double click toggle preserves original widget position");
+        var repeated = true;
+        for (var i = 0; i < 4; i++)
+            repeated &= window.TryToggleFromDoubleClick(chipLabel, MouseButton.Left, 2)
+                && window.TryToggleFromDoubleClick(window.PanelHeader, MouseButton.Left, 2);
+        Check(repeated && window.IsCollapsed, "repeated double click toggles work without extra transitions");
+        var expandMenu = window.Surface.ContextMenu!.Items.OfType<MenuItem>().Single(item => (string)item.Header == "展开待办");
+        expandMenu.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        Check(!window.IsCollapsed, "right click expand menu remains available alongside double click");
         window.ShowPanel();
         Check(!window.IsCollapsed && window.Panel.IsVisible, "widget expands again");
         var originalPin = window.Topmost;

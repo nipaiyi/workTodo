@@ -66,7 +66,7 @@
     <Grid>
       <Grid x:Name="Panel">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <Grid Margin="18,14,12,10" MouseLeftButtonDown="DragHeader">
+        <Grid x:Name="PanelHeader" Margin="18,14,12,10" Background="Transparent" MouseLeftButtonDown="Surface_MouseDown">
           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <StackPanel><TextBlock Text="桌面待办" FontSize="17" FontWeight="SemiBold"/><TextBlock Text="{Binding DateLabel}" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,4,0,0"/></StackPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
@@ -135,7 +135,7 @@
           <Button Grid.Column="1" Style="{StaticResource IconButton}" Content="&#xE738;" Height="22" Click="Hide_Click" ToolTip="隐藏到托盘" AutomationProperties.Name="隐藏到托盘"/>
         </Grid>
       </Grid>
-      <Grid x:Name="Chip" Visibility="Collapsed" Background="Transparent" MouseLeftButtonDown="Chip_MouseDown" ToolTip="展开今日待办">
+      <Grid x:Name="Chip" Visibility="Collapsed" Background="Transparent" MouseLeftButtonDown="Surface_MouseDown" ToolTip="双击展开待办">
         <Grid.ColumnDefinitions><ColumnDefinition Width="32"/><ColumnDefinition Width="*"/><ColumnDefinition Width="46"/></Grid.ColumnDefinitions>
         <TextBlock Text="&#xE73A;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource Accent}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
         <TextBlock Grid.Column="1" Text="待办" FontWeight="SemiBold" VerticalAlignment="Center"/>

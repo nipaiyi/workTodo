@@ -1,0 +1,18 @@
+<Window x:Class="DeskTodo.TaskEditor" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="任务" Width="380" SizeToContent="Height"
+        ResizeMode="NoResize" WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <StackPanel Margin="22">
+    <TextBlock x:Name="Heading" Text="添加任务" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,18"/>
+    <TextBlock Text="任务名称" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,0,0,6"/>
+    <TextBox x:Name="TitleInput" MaxLength="240" AutomationProperties.Name="任务名称"/>
+    <TextBlock Text="计划日期" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,15,0,6"/>
+    <DatePicker x:Name="DateInput" AutomationProperties.Name="计划日期"/>
+    <TextBlock Text="备注" Foreground="{StaticResource Muted}" FontSize="12" Margin="0,15,0,6"/>
+    <TextBox x:Name="NotesInput" Height="100" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" MaxLength="4000" AutomationProperties.Name="任务备注"/>
+    <TextBlock x:Name="ErrorLabel" Foreground="#B8464B" FontSize="12" Margin="0,8,0,0"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+      <Button Content="取消" IsCancel="True" Margin="0,0,8,0"/>
+      <Button x:Name="SaveButton" Content="保存" Style="{StaticResource PrimaryButton}" IsDefault="True" Click="Save_Click"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

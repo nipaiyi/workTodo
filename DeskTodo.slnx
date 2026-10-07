@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/DeskTodo.Core/DeskTodo.Core.csproj" />
+  <Project Path="src/DeskTodo/DeskTodo.csproj" />
+  <Project Path="tests/DeskTodo.Tests/DeskTodo.Tests.csproj" />
+</Solution>

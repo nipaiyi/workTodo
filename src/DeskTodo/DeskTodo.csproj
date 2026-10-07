@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>DeskTodo</AssemblyName>
+    <Version>0.1.0</Version>
+    <Product>桌面待办</Product>
+    <Description>可折叠的 Windows 桌面待办面板</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DeskTodo.Core/DeskTodo.Core.csproj" />
+  </ItemGroup>
+</Project>
